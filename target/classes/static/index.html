@@ -41,7 +41,10 @@
             font-family: 'Cascadia Code', 'Fira Code', monospace;
             font-size: 13px;
             line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
+        .ai-terminal code { white-space: pre-wrap; word-break: break-all; }
         .cursor-blink {
             display: inline-block;
             width: 8px;
@@ -219,22 +222,25 @@
 
         function processStreamLine(line) {
             line = line.trim();
-            if (!line) return true;
+            if (!line) return false;
 
             if (line.startsWith('data: ')) {
                 const jsonStr = line.substring(6);
-                if (jsonStr === '[DONE]') return true;
+                if (jsonStr === '[DONE]') return false;
 
                 try {
                     const event = JSON.parse(jsonStr);
                     if (event.name === 'content' && event.data) {
-                        appendToTerminal(event.data);
-                        return true;
+                        appendToTerminal(event.data.content);
+                        return true; // 代表收到了有效 Token
                     } else if (event.name === 'error') {
-                        appendToTerminal('\n❌ 后端报错: ' + event.data + '\n');
-                        return true;
+                        // 收到后端报错，立刻抛出异常打断外层循环！
+                        throw new Error(event.data);
                     }
                 } catch (e) {
+                    if (e.message.includes('Ollama 拒绝连接') || e.message.includes('审计异常')) {
+                        throw e; // 将后端精准的报错向上抛给 catch
+                    }
                     if (jsonStr && jsonStr !== '[DONE]') {
                         appendToTerminal(jsonStr);
                         return true;
@@ -321,23 +327,30 @@
                     const lines = buffer.split('\n');
                     buffer = lines.pop();
 
-                    for (const line of lines) {
-                        const hasContent = processStreamLine(line);
-                        if (hasContent && !firstTokenReceived) {
-                            firstTokenReceived = true;
-                            clearThinking();
-                            appendToTerminal('✅ 连接成功！开始输出审计结果...\n\n');
+                    try {
+                        for (const line of lines) {
+                            const hasContent = processStreamLine(line);
+                            if (hasContent && !firstTokenReceived) {
+                                firstTokenReceived = true;
+                                clearThinking();
+                                appendToTerminal('✅ 连接成功！开始输出审计结果...\n\n');
+                            }
                         }
+                    } catch (streamError) {
+                        clearThinking();
+                        appendToTerminal('\n❌ ' + streamError.message + '\n', true);
+                        break;
                     }
                 }
 
-                if (buffer) {
+                if (buffer && firstTokenReceived) {
                     processStreamLine(buffer);
-                    if (!firstTokenReceived) clearThinking();
                 }
 
-                appendToTerminal('\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-                appendToTerminal('✨ 审计流传输完毕。\n');
+                if (!firstTokenReceived) {
+                    appendToTerminal('\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+                    appendToTerminal('✨ 审计流传输完毕。\n');
+                }
 
             } catch (error) {
                 console.error('Fetch error:', error);
