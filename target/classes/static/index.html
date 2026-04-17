@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgenticSAST - Pure Agentic 流式审计平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        .code-editor {
+            background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: none;
+            outline: none;
+            tab-size: 4;
+        }
+        .code-editor:focus { border-color: #58a6ff; box-shadow: 0 0 0 1px #58a6ff40; }
+        #codeContainer { position: relative; height: 100%; }
+        #codeContainer textarea { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        #codeContainer.drag-over { outline: 2px dashed #00ff88; outline-offset: -2px; }
+        .ai-terminal {
+            background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
+            border: 1px solid #00ff8840;
+            box-shadow: inset 0 0 80px rgba(0, 255, 136, 0.03);
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .cursor-blink {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background: #00ff88;
+            animation: blink 1s step-end infinite;
+            vertical-align: middle;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        .btn-ai-glow {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            border: 1px solid #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2), inset 0 0 20px rgba(0, 255, 136, 0.05);
+            transition: all 0.3s ease;
+        }
+        .btn-ai-glow:hover {
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.4), inset 0 0 30px rgba(0, 255, 136, 0.1);
+            border-color: #00ff88;
+        }
+        .resizer { width: 4px; cursor: col-resize; background: #30363d; }
+        .resizer:hover { background: #00ff88; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-connecting { background: #f0b429; animation: pulse 1.5s infinite; }
+        .status-streaming { background: #00ff88; animation: pulse 1s infinite; }
+        .status-complete { background: #58a6ff; }
+        .status-error { background: #f85149; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .error-highlight {
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid #f85149;
+            border-radius: 4px;
+            padding: 4px 8px;
+            margin: 4px 0;
+            color: #f85149;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+    <header class="bg-[#161b22] border-b border-[#30363d] px-4 py-2 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <span class="text-lg">🧠</span>
+            <span class="text-white font-bold">AgenticSAST</span>
+            <span class="text-xs text-slate-400">Pure Agentic 流式审计</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">模型: <span id="modelName" class="text-[#00ff88]">glm-5.1:cloud</span></span>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+        <div class="w-1/2 flex flex-col p-4">
+            <div class="flex items-center gap-4 mb-3">
+                <span class="text-[#c9d1d9] font-medium text-sm">🔍 审计模式：</span>
+                <label class="text-xs text-slate-400 flex items-center gap-2">
+                    <input type="radio" name="inputMode" value="file" checked onchange="switchInputMode('file')">
+                    <span>单文件审查</span>
+                </label>
+                <label class="text-xs text-slate-400 flex items-center gap-2">
+                    <input type="radio" name="inputMode" value="directory" onchange="switchInputMode('directory')">
+                    <span>全量目录审查</span>
+                </label>
+            </div>
+
+            <div id="codeContainer" class="flex-1 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[#c9d1d9] font-medium">📝 粘贴源代码</span>
+                    <span id="codeInfo" class="text-xs text-slate-500">0 字符</span>
+                </div>
+                <textarea id="sourceCode" class="code-editor flex-1 p-4 rounded-lg w-full"
+                    placeholder="在此粘贴要审计的完整源代码..."
+                    oninput="updateCodeInfo()"></textarea>
+            </div>
+
+            <div id="directoryContainer" class="hidden flex-col flex-1">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[#c9d1d9] font-medium">📂 目录路径</span>
+                </div>
+                <div class="flex gap-2 mb-2">
+                    <input type="text" id="directoryPath" class="flex-1 bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-sm text-[#c9d1d9] focus:border-[#00ff88] outline-none"
+                        placeholder="输入要审计的目录绝对路径，如：C:\Projects\MyApp">
+                </div>
+                <div class="text-xs text-slate-500 mb-2">支持的源码：.java, .cbl, .cpy, .xml, .json</div>
+                <div id="directoryStatus" class="text-xs text-slate-500">输入目录路径后，点击下方按钮启动审计</div>
+            </div>
+        </div>
+
+        <div class="resizer"></div>
+
+        <div class="w-1/2 flex flex-col p-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-[#00ff88] font-medium">⚡ AI 审计终端</span>
+                <span id="terminalStatus" class="flex items-center gap-2 text-xs text-slate-400">
+                    <span class="status-dot status-complete"></span>
+                    <span>就绪</span>
+                </span>
+            </div>
+            <div id="aiTerminal" class="ai-terminal flex-1 rounded-lg p-4 overflow-y-auto">
+                <pre id="terminalOutput" class="whitespace-pre-wrap"><code class="text-[#00ff88]">欢迎使用 AgenticSAST Pure Agentic 平台
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+请在左侧粘贴源代码，然后点击下方按钮启动流式审计
+
+支持的源码类型：
+  • Java - 业务逻辑漏洞、SQL注入、XSS等
+  • COBOL - 闰年计算、金融精度、历史遗留问题
+  • 其他 - 任何需要深度审计的代码
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+<span id="typingCursor" class="cursor-blink"></span></code></pre>
+            </div>
+
+            <div class="mt-4 flex gap-3">
+                <button id="auditBtn" onclick="startAudit()" class="btn-ai-glow flex-1 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center gap-2">
+                    <span>🚀</span>
+                    <span id="auditBtnText">唤醒本地 GLM 进行全量流式审计</span>
+                </button>
+            </div>
+
+            <div class="mt-2 flex justify-between text-xs text-slate-500">
+                <span id="charCount">0 字符已输出</span>
+                <span>按 ESC 键清空终端</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let isStreaming = false;
+        let currentMode = 'file';
+        let thinkingElement = null;
+
+        function switchInputMode(mode) {
+            currentMode = mode;
+            const codeContainer = document.getElementById('codeContainer');
+            const directoryContainer = document.getElementById('directoryContainer');
+            const auditBtnText = document.getElementById('auditBtnText');
+
+            if (mode === 'file') {
+                codeContainer.classList.remove('hidden');
+                if(directoryContainer) directoryContainer.classList.add('hidden');
+                if(auditBtnText) auditBtnText.textContent = '🚀 唤醒本地 GLM 全量流式审计';
+            } else {
+                codeContainer.classList.add('hidden');
+                if(directoryContainer) directoryContainer.classList.remove('hidden');
+                if(auditBtnText) auditBtnText.textContent = '🚀 启动全量目录流式审计';
+            }
+        }
+
+        function clearTerminal() {
+            const output = document.getElementById('terminalOutput');
+            if (output) output.innerHTML = '<code class="text-[#00ff88]"></code>';
+        }
+
+        function appendToTerminal(text, isHtml = false) {
+            const output = document.getElementById('terminalOutput');
+            if (!output) return;
+            const code = output.querySelector('code');
+            if (!code) return;
+
+            if (isHtml) {
+                code.insertAdjacentHTML('beforeend', text);
+            } else {
+                const span = document.createElement('span');
+                span.textContent = text;
+                code.appendChild(span);
+            }
+            const terminal = document.getElementById('aiTerminal') || output.parentElement;
+            if (terminal) terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function clearThinking() {
+            if (thinkingElement) {
+                thinkingElement.remove();
+                thinkingElement = null;
+            }
+        }
+
+        function processStreamLine(line) {
+            line = line.trim();
+            if (!line) return true;
+
+            if (line.startsWith('data: ')) {
+                const jsonStr = line.substring(6);
+                if (jsonStr === '[DONE]') return true;
+
+                try {
+                    const event = JSON.parse(jsonStr);
+                    if (event.name === 'content' && event.data) {
+                        appendToTerminal(event.data);
+                        return true;
+                    } else if (event.name === 'error') {
+                        appendToTerminal('\n❌ 后端报错: ' + event.data + '\n');
+                        return true;
+                    }
+                } catch (e) {
+                    if (jsonStr && jsonStr !== '[DONE]') {
+                        appendToTerminal(jsonStr);
+                        return true;
+                    }
+                }
+            } else if (!line.startsWith('event:')) {
+                appendToTerminal(line);
+                return true;
+            }
+            return false;
+        }
+
+        async function startAudit() {
+            if (currentMode === 'directory') {
+                return scanDirectory();
+            }
+
+            const sourceCodeInput = document.getElementById('sourceCode');
+            const sourceCode = sourceCodeInput ? sourceCodeInput.value.trim() : '';
+            if (!sourceCode) {
+                alert('请先在左侧粘贴源代码！');
+                return;
+            }
+
+            executeStreamRequest('/api/audit/full-stream', {
+                sourceCode: sourceCode,
+                filePath: 'input-source.java'
+            });
+        }
+
+        async function scanDirectory() {
+            const dirInput = document.getElementById('directoryPath');
+            const path = dirInput ? dirInput.value.trim() : '';
+            if (!path) {
+                alert('请输入要扫描的绝对目录路径！');
+                return;
+            }
+
+            executeStreamRequest('/api/audit/dir-stream', { path: path });
+        }
+
+        async function executeStreamRequest(endpoint, payload) {
+            if (isStreaming) return;
+            isStreaming = true;
+
+            const btn = document.getElementById('auditBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50');
+            }
+
+            clearTerminal();
+            appendToTerminal('⚡ 初始化 Agentic 审计引擎...\n\n');
+            appendToTerminal('📡 正在请求接口: ' + endpoint + '\n');
+            appendToTerminal('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n');
+
+            appendToTerminal('<div id="thinking-anim" class="text-yellow-400 animate-pulse my-2">🧠 AI 正在读取海量代码预热上下文，请耐心等待...</div>', true);
+            thinkingElement = document.getElementById('thinking-anim');
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    let errorMsg = 'HTTP ' + response.status;
+                    if (response.status === 413) errorMsg += ' (请求体过大)';
+                    if (response.status === 404) errorMsg += ' (接口不存在)';
+                    throw new Error(errorMsg);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let firstTokenReceived = false;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        const hasContent = processStreamLine(line);
+                        if (hasContent && !firstTokenReceived) {
+                            firstTokenReceived = true;
+                            clearThinking();
+                            appendToTerminal('✅ 连接成功！开始输出审计结果...\n\n');
+                        }
+                    }
+                }
+
+                if (buffer) {
+                    processStreamLine(buffer);
+                    if (!firstTokenReceived) clearThinking();
+                }
+
+                appendToTerminal('\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+                appendToTerminal('✨ 审计流传输完毕。\n');
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                clearThinking();
+                appendToTerminal('\n❌ 请求失败: ' + error.message + '\n', true);
+            } finally {
+                isStreaming = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                }
+            }
+        }
+
+        function updateCodeInfo() {
+            const code = document.getElementById('sourceCode').value;
+            document.getElementById('codeInfo').textContent = code.length + ' 字符';
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                clearTerminal();
+                appendToTerminal('欢迎使用 AgenticSAST Pure Agentic 平台\n');
+                appendToTerminal('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+                appendToTerminal('请在左侧粘贴源代码，然后点击下方按钮启动流式审计\n\n');
+            }
+        });
+    </script>
+</body>
+</html>

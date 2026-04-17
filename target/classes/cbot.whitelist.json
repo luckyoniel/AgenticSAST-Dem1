@@ -1,0 +1,6 @@
+[
+  {
+    "filePath": "src/main/java/com/agenticsast/controller/ScanController.java",
+    "vulnerabilityType": "OWA-009"
+  }
+]
