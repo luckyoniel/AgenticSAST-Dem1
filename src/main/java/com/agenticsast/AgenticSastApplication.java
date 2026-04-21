@@ -44,7 +44,7 @@ public class AgenticSastApplication implements CommandLineRunner {
         if (!isCli) {
             System.out.println("=================================================");
             System.out.println("🚀 Agentic SAST Web 服务已启动！");
-            System.out.println("👉 访问 http://localhost:8080 体验可视化审计功能");
+            System.out.println("👉 访问 http://localhost:8081 体验可视化审计功能");
             System.out.println("=================================================");
         }
     }
@@ -93,7 +93,7 @@ public class AgenticSastApplication implements CommandLineRunner {
             return; // CLI 模式下不打开浏览器
         }
 
-        String url = "http://localhost:8080";
+        String url = "http://localhost:8081";
         try {
             System.out.println("[*] 正在尝试自动打开浏览器...");
             

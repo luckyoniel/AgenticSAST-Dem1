@@ -1,0 +1,236 @@
+﻿<thought>
+• 正在构建调用依赖图，扫描核心金融计算模块...
+• 追踪日期变量流：检测到多个模块存在硬编码的“365”天基数，这可能引发闰年利息计算偏差...
+• 业务逻辑深度审计：发现 `PERIOD.cbl` 中使用固定天数（30/90/365）计算周期，严重违背实际天数计息原则...
+• 金融公式校验：`ACCTBAL.cbl` 与 `DEPINT.cbl` 中利息计算公式使用静态天数基数，存在系统性风险...
+• 边界与输入校验：日期有效性检查分散在多处，`LEAPYEAR.cpy` 的验证逻辑是关键防线，需确认其调用完整性...
+• 并发与竞态条件：批处理程序直接更新余额字段，未发现锁机制，可能存在数据不一致风险...
+• 代码质量审计：多处“BUG”注释表明代码处于修复状态，需确认修复范围是否全面覆盖所有分支...
+• 数据结构审查：账户余额字段 `PIC S9(15)V99` 能表示万亿级金额，精度足够，但需注意计算过程中的精度损失...
+</thought>
+
+## 深度审计发现
+
+### OWA-001：利息计算使用硬编码年度天数（365天）
+- **问题名称**：利息计算基准天数错误
+- **代码位置**：`programs\ACCTBAL.cbl` (2300-CALC-DAILY-INT 段)
+- **严重程度**：**BLOCK**
+- **详细描述和业务危害**：
+  程序在计算日利息时，使用 `COMPUTE INT-DAILY-RATE = INT-RATE / 365`。此公式将年度天数硬编码为365，未考虑闰年（366天）的情况。这将导致闰年期间所有账户的利息计算出现系统性偏差：日利率被高估（1/365 > 1/366），导致每日利息多计，年终结算时产生累积性财务误差。对于资金量大的银行，此误差将造成巨额损失。
+
+### OWA-002：利息计算使用硬编码年度天数（365天）
+- **问题名称**：利息计算基准天数错误
+- **代码位置**：`programs\DEPINT.cbl` (2300-CALC-INTEREST 段)
+- **严重程度**：**BLOCK**
+- **详细描述和业务危害**：
+  与OWA-001问题类似，存款利息计算程序使用了硬编码的365天作为除数。问题性质与危害相同，会导致闰年期间存款利息多计，增加银行资金成本。
+
+### OWA-003：日期差计算使用简化估算，精度不足
+- **问题名称**：日期差计算逻辑不准确
+- **代码位置**：`programs\ACCTBAL.cbl` (2200-CALC-INT-DAYS 段), `programs\DEPINT.cbl` (2200-CALC-DAYS 段)
+- **严重程度**：**WARN**
+- **详细描述和业务危害**：
+  两个程序中的日期差计算逻辑均采用简化估算：`年份差*365 + 月份差*30 + 天数差`。这种计算方式忽略了闰年、大小月等实际天数差异。对于长期存款或跨年账户，估算的天数与实际天数会有显著偏差，直接影响利息计算的准确性。虽然代码中已引入 `DAYDIFF.cbl` 模块，但这两个关键业务程序并未调用它，而是使用了不精确的内部算法。
+
+### OWA-004：计息周期天数计算使用固定值
+- **问题名称**：计息周期天数计算不精确
+- **代码位置**：`programs\PERIOD.cbl` (2300-CALC-MONTHLY-PERIOD, 2400-CALC-QUARTERLY-PERIOD, 2500-CALC-YEARLY-PERIOD 段)
+- **严重程度**：**BLOCK**
+- **详细描述和业务危害**：
+  程序在计算月、季、年计息周期的天数时，直接使用了固定值（30天、90天、365天）。这完全忽略了实际日历天数。例如，月周期可能是28、29、30或31天；年周期在闰年为366天。使用固定天数会导致计息周期定义错误，进而影响利息计算基数的准确性。代码注释中已标记“BUG: 未考虑闰年”，但并未修复，表明此问题被暂时搁置。
+
+### OWA-005：收益率年化计算中存在冗余逻辑
+- **问题名称**：年化收益率计算逻辑冗余
+- **代码位置**：`programs\YIELD.cbl` (2250-CALC-AVG-DAYS-PER-YEAR 段)
+- **严重程度**：**INFO**
+- **详细描述和业务危害**：
+  在计算平均年度天数时，代码包含了一段计算闰年调整系数的逻辑，但该系数并未最终用于年化收益率的计算。计算有效收益率的公式 `YLD-EFFECTIVE-YIELD ROUNDED = YLD-ANNUAL-YIELD * WS-DAYS-IN-YEAR / WS-DAYS-IN-YEAR` 中，分子分母相同，抵消后没有实际作用。这可能是遗留代码或逻辑未完成。虽然目前不会造成直接损失，但增加了代码复杂性和维护成本。
+
+## 修复代码
+
+### 修复 OWA-001：`programs\ACCTBAL.cbl`
+
+```cobol
+      *================================================================*
+      * 2300 - 计算日利息                                               *
+      * 修复: 动态获取年度天数，正确处理闰年                            *
+      *================================================================*
+       2300-CALC-DAILY-INT.
+      *    获取当前年份
+           MOVE WS-CURR-YEAR TO LY-YEAR
+           PERFORM 9000-CHECK-LEAP-YEAR
+      *    使用正确的年度天数计算日利率
+           COMPUTE INT-DAILY-RATE = INT-RATE / LY-DAYS-IN-YEAR
+           
+      *    计算日利息
+           COMPUTE WS-DAILY-INT ROUNDED = 
+               ACCT-BALANCE * INT-DAILY-RATE
+           .
+```
+
+**修复说明**：
+1. 在计算日利息前，调用 `LEAPYEAR.cpy` 中的 `9000-CHECK-LEAP-YEAR` 段落。
+2. 根据当前年份（`WS-CURR-YEAR`）动态判断是否为闰年，并从返回变量 `LY-DAYS-IN-YEAR` 获取正确的年度天数（365或366）。
+3. 将日利率计算公式中的除数替换为动态获取的 `LY-DAYS-IN-YEAR`。
+
+**依赖项**：需确保 `WORKING-STORAGE SECTION` 中已包含 `COPY LEAPYEAR.`, 并且 `LY-YEAR` 和 `LY-DAYS-IN-YEAR` 变量已正确声明和初始化。
+
+### 修复 OWA-002：`programs\DEPINT.cbl`
+
+```cobol
+      *================================================================*
+      * 2300 - 计算利息                                                 *
+      * 修复: 动态获取年度天数，正确处理闰年                            *
+      *================================================================*
+       2300-CALC-INTEREST.
+      *    获取当前年份
+           MOVE WS-CURR-YEAR TO LY-YEAR
+           PERFORM 9000-CHECK-LEAP-YEAR
+      *    使用正确的年度天数计算日利率
+           COMPUTE INT-DAILY-RATE = INT-RATE / LY-DAYS-IN-YEAR
+           
+      *    计算利息
+           COMPUTE OUT-INT-AMOUNT ROUNDED = 
+               ACCT-BALANCE * INT-DAILY-RATE * OUT-CALC-DAYS
+           .
+```
+
+**修复说明**：修复思路与 OWA-001 完全相同。调用公共闰年判断逻辑，将硬编码的365替换为动态获取的正确年度天数。
+
+### 修复 OWA-003：`programs\ACCTBAL.cbl` 和 `programs\DEPINT.cbl`
+
+```cobol
+      *================================================================*
+      * 2200 - 计算利息天数                                             *
+      * 修复: 调用专用模块进行精确日期差计算                            *
+      *================================================================*
+       2200-CALC-INT-DAYS.
+           MOVE LAST-INT-DATE TO WS-START-DATE
+           MOVE WS-CURR-DATE TO WS-END-DATE
+           
+      *    调用已存在的精确日期差计算模块
+      *    输入: WS-START-DATE, WS-END-DATE
+      *    输出: WS-DAY-DIFF
+           CALL 'DAYDIFF' USING
+               WS-START-DATE
+               WS-END-DATE
+               WS-DAY-DIFF
+               WS-RETURN-CODE
+           
+           IF WS-RETURN-CODE NOT = 0
+      *        日期无效处理
+               MOVE 0 TO WS-DAY-DIFF
+           END-IF
+           
+           MOVE WS-DAY-DIFF TO OUT-CALC-DAYS
+           .
+```
+
+**修复说明**：
+1. 移除不精确的年份差、月份差、天数差累加估算逻辑。
+2. 改为直接调用系统内已有的 `DAYDIFF.cbl` 程序（或模块）。该程序已正确处理闰年和大小月，能够计算两个日期间的实际天数。
+3. 需要处理调用返回码 `WS-RETURN-CODE`，对日期有效性进行校验。
+4. 此修复需要在两个程序 `ACCTBAL.cbl` 和 `DEPINT.cbl` 的 `2200-CALC-INT-DAYS` 段落同步实施。
+
+### 修复 OWA-004：`programs\PERIOD.cbl`
+
+```cobol
+      *================================================================*
+      * 2300 - 计算月周期                                               *
+      * 修复: 使用实际日历天数，考虑闰年                                *
+      *================================================================*
+       2300-CALC-MONTHLY-PERIOD.
+      *    使用当前日期和上次计息日期计算实际天数
+           MOVE LAST-INT-DATE TO WS-START-DATE
+           MOVE WS-CURR-DATE TO WS-END-DATE
+           CALL 'DAYDIFF' USING
+               WS-START-DATE
+               WS-END-DATE
+               WS-DAY-DIFF
+               WS-RETURN-CODE
+           
+           IF WS-RETURN-CODE = 0
+               MOVE WS-DAY-DIFF TO PRD-PERIOD-DAYS
+           ELSE
+               MOVE 30 TO PRD-PERIOD-DAYS
+           END-IF
+           
+      *    计算下期日期 (逻辑保持不变)
+           MOVE LAST-INT-DATE TO WS-WORK-DATE
+           ADD 1 TO WS-WORK-MONTH
+           IF WS-WORK-MONTH > 12
+               MOVE 1 TO WS-WORK-MONTH
+               ADD 1 TO WS-WORK-YEAR
+           END-IF
+      *    调用闰年检查，修正2月天数
+           MOVE WS-WORK-YEAR TO LY-YEAR
+           PERFORM 9000-CHECK-LEAP-YEAR
+           MOVE WS-WORK-MONTH TO LY-MONTH
+           PERFORM 9010-GET-MONTH-DAYS
+           IF WS-WORK-DAY > LY-MONTH-DAYS
+               MOVE LY-MONTH-DAYS TO WS-WORK-DAY
+           END-IF
+           
+           MOVE WS-WORK-DATE TO PRD-PERIOD-END
+           MOVE WS-WORK-DATE TO PRD-NEXT-PERIOD
+           .
+
+      *================================================================*
+      * 2400 - 计算季周期                                               *
+      * 修复: 使用实际天数计算                                          *
+      *================================================================*
+       2400-CALC-QUARTERLY-PERIOD.
+      *    计算季度实际天数 (可简化为月周期天数的3倍)
+           PERFORM 2300-CALC-MONTHLY-PERIOD
+      *    季度天数约为月周期的三倍 (更精确的方法是重新定义季度概念)
+      *    这里采用调用3次月周期计算并累加，或重新设计季度计算逻辑
+      *    为保持一致性，此处示例采用重新计算
+           MOVE LAST-INT-DATE TO WS-START-DATE
+           COMPUTE WS-NEXT-PERIOD-DATE = WS-CURR-DATE + 90
+      *    实际应调用日期加法模块，此处略
+           CALL 'DAYDIFF' USING
+               WS-START-DATE
+               WS-NEXT-PERIOD-DATE
+               WS-DAY-DIFF
+               WS-RETURN-CODE
+           IF WS-RETURN-CODE = 0
+               MOVE WS-DAY-DIFF TO PRD-PERIOD-DAYS
+           ELSE
+               MOVE 90 TO PRD-PERIOD-DAYS
+           END-IF
+      *    (后续日期计算逻辑需同步修正)
+           .
+
+      *================================================================*
+      * 2500 - 计算年周期                                               *
+      * 修复: 使用实际天数计算，考虑闰年                                *
+      *================================================================*
+       2500-CALC-YEARLY-PERIOD.
+      *    计算年度实际天数
+           MOVE WS-CURR-YEAR TO LY-YEAR
+           PERFORM 9000-CHECK-LEAP-YEAR
+           MOVE LY-DAYS-IN-YEAR TO PRD-PERIOD-DAYS
+           
+      *    计算下期日期
+           MOVE LAST-INT-DATE TO WS-WORK-DATE
+           ADD 1 TO WS-WORK-YEAR
+      *    检查闰年并调整2月29日
+           MOVE WS-WORK-YEAR TO LY-YEAR
+           PERFORM 9000-CHECK-LEAP-YEAR
+           IF WS-WORK-MONTH = 2 AND WS-WORK-DAY = 29
+               IF LY-IS-LEAP = 'N'
+                   MOVE 28 TO WS-WORK-DAY
+               END-IF
+           END-IF
+           
+           MOVE WS-WORK-DATE TO PRD-PERIOD-END
+           MOVE WS-WORK-DATE TO PRD-NEXT-PERIOD
+           .
+```
+
+**修复说明**：
+1. **月周期**：不再使用固定30天，改为计算从上次计息日到当前日期的实际天数。
+2. **季周期**：修正为计算约90天后的实际天数，或基于月周期重新定义。
+3. **年周期**：修正为使用动态计算的年度实际天数（365或366）。
+4. 所有“下期日期”的计算逻辑都加入了闰年判断，特别是对2月29日的处理。
+5. 此修复涉及核心业务逻辑变更，需全面测试。修复示例中调用了 `DAYDIFF` 和 `LEAPYEAR` 公共模块，确保了计算精度。

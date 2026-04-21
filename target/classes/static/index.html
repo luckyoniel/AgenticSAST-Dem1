@@ -3,381 +3,1561 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AgenticSAST - Pure Agentic 流式审计平台</title>
+    <title>AgenticSAST - Agentic IDE</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/loader.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background: #0a0a0a;
-            color: #e0e0e0;
-            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-            margin: 0;
-            height: 100vh;
+            background: #1c1c1e;
+            color: #e5e5e7;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Microsoft YaHei', sans-serif;
             overflow: hidden;
+            height: 100vh;
+            width: 100vw;
         }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0a0a0a; }
-        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
-        .code-editor {
-            background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
-            border: 1px solid #30363d;
-            color: #c9d1d9;
-            font-family: 'Cascadia Code', 'Fira Code', monospace;
-            font-size: 13px;
-            line-height: 1.6;
-            resize: none;
-            outline: none;
-            tab-size: 4;
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #48484a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #636366; }
+
+        .glass-card {
+            background: rgba(37, 37, 38, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
-        .code-editor:focus { border-color: #58a6ff; box-shadow: 0 0 0 1px #58a6ff40; }
-        #codeContainer { position: relative; height: 100%; }
-        #codeContainer textarea { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-        #codeContainer.drag-over { outline: 2px dashed #00ff88; outline-offset: -2px; }
+
+        .file-tree-item {
+            padding: 5px 10px 5px 20px;
+            cursor: pointer;
+            font-size: 12.5px;
+            color: #a1a1a6;
+            border-radius: 6px;
+            margin: 2px 6px;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+        .file-tree-item::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 0;
+        }
+        .file-tree-item:hover::before { opacity: 1; }
+        .file-tree-item:hover { color: #fff; }
+        .file-tree-item > * { position: relative; z-index: 1; }
+        .file-tree-item.active { background: rgba(0, 122, 255, 0.25); color: #0a84ff; }
+
         .ai-terminal {
-            background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
-            border: 1px solid #00ff8840;
-            box-shadow: inset 0 0 80px rgba(0, 255, 136, 0.03);
-            font-family: 'Cascadia Code', 'Fira Code', monospace;
-            font-size: 13px;
-            line-height: 1.5;
+            font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.7;
+            color: #e5e5e7;
+        }
+
+        .clickable-filename {
+            color: #64d2ff;
+            cursor: pointer;
+            text-decoration: underline;
+            text-decoration-color: rgba(100, 210, 255, 0.4);
+        }
+        .clickable-filename:hover { text-decoration-color: #64d2ff; }
+
+        .diff-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 16px 0;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+        .diff-header {
+            background: rgba(60, 60, 60, 0.5);
+            padding: 10px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #8e8e93;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .diff-old {
+            background: rgba(255, 59, 48, 0.08);
+            border-left: 3px solid #ff3b30;
+            padding: 12px 16px;
+            font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+            font-size: 11px;
+            color: #ff6b6b;
             white-space: pre-wrap;
             word-break: break-all;
         }
-        .ai-terminal code { white-space: pre-wrap; word-break: break-all; }
+        .diff-new {
+            background: rgba(48, 209, 88, 0.08);
+            border-left: 3px solid #30d158;
+            padding: 12px 16px;
+            font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+            font-size: 11px;
+            color: #32d74b;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .diff-footer {
+            padding: 12px 16px;
+            background: rgba(50, 50, 50, 0.4);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .btn-apple {
+            background: #0a84ff;
+            color: #fff;
+            border: none;
+            border-radius: 980px;
+            padding: 6px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-apple:hover { background: #409cff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(10, 132, 255, 0.4); }
+        .btn-apple:active { transform: translateY(0); }
+        .btn-apple:disabled { background: #48484a; color: #8e8e93; cursor: not-allowed; box-shadow: none; transform: none; }
+        .btn-apple.applying { background: #0a84ff; opacity: 0.8; }
+
+        .traffic-lights { display: flex; gap: 8px; align-items: center; }
+        .traffic-light { width: 12px; height: 12px; border-radius: 50%; cursor: pointer; transition: filter 0.2s; }
+        .traffic-light:hover { filter: brightness(1.2); }
+        .tl-red { background: #ff453a; }
+        .tl-yellow { background: #ffd60a; }
+        .tl-green { background: #30d158; }
+
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+        .s-ready { background: #30d158; }
+        .s-loading { background: #ffd60a; animation: pulse 1.5s infinite; }
+        .s-error { background: #ff453a; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
         .cursor-blink {
             display: inline-block;
             width: 8px;
-            height: 16px;
-            background: #00ff88;
+            height: 14px;
+            background: #0a84ff;
             animation: blink 1s step-end infinite;
             vertical-align: middle;
+            margin-left: 2px;
         }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-        .btn-ai-glow {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-            border: 1px solid #00ff88;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2), inset 0 0 20px rgba(0, 255, 136, 0.05);
-            transition: all 0.3s ease;
+
+        .ai-fix-highlight {
+            background-color: rgba(48, 209, 88, 0.3) !important;
+            animation: highlight-flash 0.5s ease-in-out 4;
         }
-        .btn-ai-glow:hover {
-            box-shadow: 0 0 30px rgba(0, 255, 136, 0.4), inset 0 0 30px rgba(0, 255, 136, 0.1);
-            border-color: #00ff88;
+        @keyframes highlight-flash {
+            0%, 100% { background-color: rgba(48, 209, 88, 0.3); }
+            50% { background-color: rgba(48, 209, 88, 0.6); }
         }
-        .resizer { width: 4px; cursor: col-resize; background: #30363d; }
-        .resizer:hover { background: #00ff88; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .status-connecting { background: #f0b429; animation: pulse 1.5s infinite; }
-        .status-streaming { background: #00ff88; animation: pulse 1s infinite; }
-        .status-complete { background: #58a6ff; }
-        .status-error { background: #f85149; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .error-highlight {
-            background: rgba(248, 81, 73, 0.15);
-            border: 1px solid #f85149;
-            border-radius: 4px;
-            padding: 4px 8px;
-            margin: 4px 0;
-            color: #f85149;
+
+        .macos-notification {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        .macos-notification.fade-out {
+            animation: slideOut 0.3s ease-in forwards;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #editorContainer { padding: 20px; }
+        #diffContainer { 
+            position: absolute; 
+            inset: 0; 
+            display: none; 
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        
+        .diff-editor-wrapper {
+            position: absolute;
+            inset: 40px 20px 20px 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: modalZoomIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        
+        @keyframes modalZoomIn {
+            from { 
+                opacity: 0; 
+                transform: scale(0.92) translateY(10px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: scale(1) translateY(0); 
+            }
+        }
+        
+        .diff-toolbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: rgba(30, 30, 30, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 101;
+        }
+        
+        .diff-toolbar-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .diff-toolbar-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-accept {
+            background: linear-gradient(135deg, #30d158 0%, #28a745 100%);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(48, 209, 88, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-accept:hover { 
+            background: linear-gradient(135deg, #32d74b 0%, #2ea043 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(48, 209, 88, 0.4);
+        }
+        .btn-accept:active { transform: translateY(0); }
+        
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e5e5e7;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-cancel:hover { 
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .success-flash {
+            animation: successFlash 0.6s ease-out forwards;
+        }
+        @keyframes successFlash {
+            0% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.6); }
+            50% { box-shadow: 0 0 0 15px rgba(48, 209, 88, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0); }
+        }
+
+        /* macOS-style Modal Animation */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: modalFadeIn 0.2s ease-out forwards;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .modal-content {
+            background: rgba(40, 40, 42, 0.95);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+            animation: modalScaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: auto;
+        }
+        @keyframes modalScaleIn {
+            from { 
+                opacity: 0; 
+                transform: scale(0.9);
+            }
+            to { 
+                opacity: 1; 
+                transform: scale(1);
+            }
+        }
+
+        /* Success Toast */
+        .success-toast {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #30d158 0%, #28a745 100%);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 8px 32px rgba(48, 209, 88, 0.4);
+            z-index: 2000;
+            animation: toastIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+                       toastOut 0.3s ease-in 1.7s forwards;
+        }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes toastOut {
+            from { opacity: 1; transform: translateX(-50%) translateY(0); }
+            to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
         }
     </style>
 </head>
-<body class="flex flex-col h-screen">
-    <header class="bg-[#161b22] border-b border-[#30363d] px-4 py-2 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-            <span class="text-lg">🧠</span>
-            <span class="text-white font-bold">AgenticSAST</span>
-            <span class="text-xs text-slate-400">Pure Agentic 流式审计</span>
+<body class="flex flex-col h-screen w-screen overflow-hidden p-4 gap-4">
+
+    <!-- Top Bar -->
+    <header class="glass-card rounded-2xl h-12 flex items-center px-5 shrink-0">
+        <div class="traffic-lights mr-6">
+            <div class="traffic-light tl-red" onclick="window.close()"></div>
+            <div class="traffic-light tl-yellow"></div>
+            <div class="traffic-light tl-green"></div>
         </div>
-        <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">模型: <span id="modelName" class="text-[#00ff88]">glm-5.1:cloud</span></span>
+        <div class="flex items-center gap-4 flex-1 justify-center">
+            <span class="text-sm font-semibold text-white tracking-wide">AgenticSAST</span>
+            <div class="h-4 w-px bg-gray-600 opacity-30"></div>
+            <input type="text" id="dirPath" class="bg-transparent border-b border-gray-500/50 text-xs text-gray-300 focus:border-blue-400 outline-none w-72 py-1 px-2 placeholder:text-gray-500 transition-colors"
+                placeholder="粘贴代码目录路径，回车加载..."
+                onkeydown="if(event.key==='Enter') loadWorkspace()">
+        </div>
+        <div class="flex items-center gap-3 ml-6">
+            <button onclick="loadWorkspace()" class="text-xs text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
+                加载工作区
+            </button>
+            <button id="auditBtn" onclick="startAudit()" class="btn-apple flex items-center gap-1.5 text-xs">
+                <span>▶</span> 启动审计
+            </button>
+            <div class="flex items-center gap-1.5 ml-3">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText" class="text-xs text-gray-500">就绪</span>
+            </div>
         </div>
     </header>
 
-    <main class="flex-1 flex overflow-hidden">
-        <div class="w-1/2 flex flex-col p-4">
-            <div class="flex items-center gap-4 mb-3">
-                <span class="text-[#c9d1d9] font-medium text-sm">🔍 审计模式：</span>
-                <label class="text-xs text-slate-400 flex items-center gap-2">
-                    <input type="radio" name="inputMode" value="file" checked onchange="switchInputMode('file')">
-                    <span>单文件审查</span>
-                </label>
-                <label class="text-xs text-slate-400 flex items-center gap-2">
-                    <input type="radio" name="inputMode" value="directory" onchange="switchInputMode('directory')">
-                    <span>全量目录审查</span>
-                </label>
-            </div>
+    <!-- Main Content -->
+    <main class="flex flex-1 overflow-hidden gap-4 min-h-0">
 
-            <div id="codeContainer" class="flex-1 flex flex-col">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-[#c9d1d9] font-medium">📝 粘贴源代码</span>
-                    <span id="codeInfo" class="text-xs text-slate-500">0 字符</span>
+        <!-- Left Panel -->
+        <aside class="glass-card w-64 rounded-2xl flex flex-col shrink-0 overflow-hidden">
+            <div class="h-10 px-4 flex items-center border-b border-white/5">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Explorer</span>
+            </div>
+            <div id="fileTreeContainer" class="flex-1 overflow-y-auto py-2">
+                <div id="fileTreeHint" class="text-xs text-gray-500 p-4 text-center leading-relaxed">
+                    在顶部输入目录路径<br>点击"加载工作区"
                 </div>
-                <textarea id="sourceCode" class="code-editor flex-1 p-4 rounded-lg w-full"
-                    placeholder="在此粘贴要审计的完整源代码..."
-                    oninput="updateCodeInfo()"></textarea>
+                <ul id="fileTree" class="list-none" style="display: none;"></ul>
             </div>
+        </aside>
 
-            <div id="directoryContainer" class="hidden flex-col flex-1">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-[#c9d1d9] font-medium">📂 目录路径</span>
+        <!-- Center Panel -->
+        <section class="glass-card flex-1 rounded-2xl flex flex-col overflow-hidden min-w-0 relative">
+            <div class="h-10 bg-black/20 flex items-center justify-between px-4 border-b border-white/5 shrink-0">
+                <div class="flex items-center gap-2">
+                    <div id="activeTab" class="flex items-center gap-2 bg-[#1c1c1e] px-4 py-1 text-xs text-white rounded-t-lg border-t border-l border-r border-white/10">
+                        <span id="tabFileName">欢迎页</span>
+                    </div>
                 </div>
-                <div class="flex gap-2 mb-2">
-                    <input type="text" id="directoryPath" class="flex-1 bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-sm text-[#c9d1d9] focus:border-[#00ff88] outline-none"
-                        placeholder="输入要审计的目录绝对路径，如：C:\Projects\MyApp">
-                </div>
-                <div class="text-xs text-slate-500 mb-2">支持的源码：.java, .cbl, .cpy, .xml, .json</div>
-                <div id="directoryStatus" class="text-xs text-slate-500">输入目录路径后，点击下方按钮启动审计</div>
-            </div>
-        </div>
-
-        <div class="resizer"></div>
-
-        <div class="w-1/2 flex flex-col p-4">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-[#00ff88] font-medium">⚡ AI 审计终端</span>
-                <span id="terminalStatus" class="flex items-center gap-2 text-xs text-slate-400">
-                    <span class="status-dot status-complete"></span>
-                    <span>就绪</span>
-                </span>
-            </div>
-            <div id="aiTerminal" class="ai-terminal flex-1 rounded-lg p-4 overflow-y-auto">
-                <pre id="terminalOutput" class="whitespace-pre-wrap"><code class="text-[#00ff88]">欢迎使用 AgenticSAST Pure Agentic 平台
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-请在左侧粘贴源代码，然后点击下方按钮启动流式审计
-
-支持的源码类型：
-  • Java - 业务逻辑漏洞、SQL注入、XSS等
-  • COBOL - 闰年计算、金融精度、历史遗留问题
-  • 其他 - 任何需要深度审计的代码
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-<span id="typingCursor" class="cursor-blink"></span></code></pre>
-            </div>
-
-            <div class="mt-4 flex gap-3">
-                <button id="auditBtn" onclick="startAudit()" class="btn-ai-glow flex-1 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center gap-2">
-                    <span>🚀</span>
-                    <span id="auditBtnText">唤醒本地 GLM 进行全量流式审计</span>
+                <button id="saveBtn" onclick="saveChanges()" class="btn-apple flex items-center gap-1.5 text-xs opacity-50 cursor-not-allowed" disabled>
+                    <span>💾</span> Save Changes
                 </button>
             </div>
-
-            <div class="mt-2 flex justify-between text-xs text-slate-500">
-                <span id="charCount">0 字符已输出</span>
-                <span>按 ESC 键清空终端</span>
+            <div id="editorContainer" class="flex-1 relative">
+                <div id="placeholderText" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 pointer-events-none" style="padding: 20px;">
+                    <div class="text-5xl mb-4 opacity-30">🧠</div>
+                    <div class="text-lg font-light tracking-wide mb-1">AgenticSAST</div>
+                    <div class="text-xs opacity-60">选择文件或启动审计</div>
+                </div>
             </div>
-        </div>
+            <!-- Diff Container -->
+            <div id="diffContainer">
+                <div class="diff-toolbar">
+                    <div class="diff-toolbar-title">
+                        <span>🔍</span>
+                        <span id="diffTitle">代码差异预览</span>
+                    </div>
+                    <div class="diff-toolbar-actions">
+                        <button id="btnAcceptDiff" onclick="acceptDiff()" class="btn-accept">
+                            <span>✔️</span> 接受并覆盖
+                        </button>
+                        <button id="btnCancelDiff" onclick="cancelDiff()" class="btn-cancel">
+                            <span>❌</span> 取消
+                        </button>
+                    </div>
+                </div>
+                <div class="diff-editor-wrapper" id="diffEditorWrapper">
+                    <div id="diffEditorContent" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Panel -->
+        <aside class="w-[380px] glass-card rounded-2xl flex flex-col shrink-0 overflow-hidden">
+            <div class="h-10 px-4 flex items-center justify-between border-b border-white/5 shrink-0">
+                <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Agentic Assistant</span>
+                <button onclick="clearTerminal()" class="text-xs text-gray-500 hover:text-white transition-colors">清空</button>
+            </div>
+            <div id="aiTerminal" class="ai-terminal flex-1 p-5 overflow-y-auto">
+                <code id="terminalOutput" class="block">
+                    <span class="text-gray-500 text-xs mb-4 block">—— AgenticSAST 审计引擎 ——</span>
+                    <span class="text-gray-400 text-xs leading-relaxed block mb-3">
+                        系统已就绪。请加载工作区并启动全量审计。<br>
+                        AI 将自动检测代码漏洞并提供修复方案。
+                    </span>
+                    <span id="terminalCursor" class="cursor-blink"></span>
+                </code>
+            </div>
+        </aside>
+
     </main>
 
     <script>
+        // ========== Global State ==========
+        let editor = null;
+        let diffEditor = null;
+        let diffOriginalModel = null;
+        let diffModifiedModel = null;
+        let currentWorkspace = '';
+        let currentFile = '';
         let isStreaming = false;
-        let currentMode = 'file';
-        let thinkingElement = null;
+        let currentLanguage = 'java';
+        let xmlBuffer = '';
+        let fixCount = 0;
+        let currentDecorations = [];
+        let loadedFiles = new Set();
 
-        function switchInputMode(mode) {
-            currentMode = mode;
-            const codeContainer = document.getElementById('codeContainer');
-            const directoryContainer = document.getElementById('directoryContainer');
-            const auditBtnText = document.getElementById('auditBtnText');
+        // Diff preview state
+        let pendingDiff = null;
+        let pendingFixId = null;
+        let diffOriginalContent = '';
+        let diffModifiedContent = '';
 
-            if (mode === 'file') {
-                codeContainer.classList.remove('hidden');
-                if(directoryContainer) directoryContainer.classList.add('hidden');
-                if(auditBtnText) auditBtnText.textContent = '🚀 唤醒本地 GLM 全量流式审计';
-            } else {
-                codeContainer.classList.add('hidden');
-                if(directoryContainer) directoryContainer.classList.remove('hidden');
-                if(auditBtnText) auditBtnText.textContent = '🚀 启动全量目录流式审计';
+        // ========== Initialize Monaco Editor ==========
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('editorContainer'), {
+                value: '',
+                theme: 'vs-dark',
+                language: 'java',
+                readOnly: false,
+                minimap: { enabled: false },
+                fontSize: 13.5,
+                lineHeight: 21,
+                fontFamily: "'SF Mono', 'Cascadia Code', Consolas, monospace",
+                padding: { top: 16, bottom: 16 },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                renderLineHighlight: 'all',
+                smoothScrolling: true,
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on'
+            });
+
+            editor.onDidChangeModelContent(() => {
+                const saveBtn = document.getElementById('saveBtn');
+                if (currentFile) {
+                    saveBtn.disabled = false;
+                    saveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            });
+
+            document.getElementById('placeholderText').style.display = 'none';
+            editor.setValue('// Monaco Editor 已加载，请在左侧选择文件...');
+        });
+
+        function getBaseUrl() {
+            if (window.location.protocol === 'file:' || ['63342', '5500', '3000'].includes(window.location.port)) {
+                return 'http://localhost:8081';
+            }
+            return '';
+        }
+
+        // ========== Load Workspace ==========
+        async function loadWorkspace() {
+            const path = document.getElementById('dirPath').value.trim();
+            if (!path) { alert('请输入目录路径！'); return; }
+            updateStatus('loading', '加载中...');
+
+            const fileTree = document.getElementById('fileTree');
+            const hint = document.getElementById('fileTreeHint');
+            hint.textContent = '加载中...';
+            hint.style.display = 'block';
+            fileTree.innerHTML = '';
+            fileTree.style.display = 'none';
+            loadedFiles.clear();
+
+            try {
+                const resp = await fetch(`${getBaseUrl()}/api/files/tree?path=${encodeURIComponent(path)}`);
+                if (!resp.ok) throw new Error(await resp.text());
+                const files = await resp.json();
+
+                if (Array.isArray(files) && files.length > 0) {
+                    currentWorkspace = path;
+                    hint.style.display = 'none';
+                    fileTree.style.display = 'block';
+
+                    files.forEach(relPath => {
+                        loadedFiles.add(relPath);
+                        const li = document.createElement('li');
+                        const fileName = relPath.split(/[/\\]/).pop();
+                        li.innerHTML = `<div class="file-tree-item" onclick="openFile('${escapeJS(relPath)}')" title="${escapeJS(relPath)}"><span>${getFileIcon(fileName)}</span><span>${escapeHTML(fileName)}</span></div>`;
+                        fileTree.appendChild(li);
+                    });
+                    updateStatus('ready', `已加载 ${files.length} 个文件`);
+                } else {
+                    hint.textContent = '未找到源文件';
+                    updateStatus('error', '目录为空');
+                }
+            } catch (err) {
+                hint.textContent = '加载失败: ' + err.message;
+                updateStatus('error', '加载失败');
             }
         }
 
+        // ========== Open File ==========
+        async function openFile(relativePath) {
+            if (!currentWorkspace) {
+                showNotification('请先加载工作区！', 'warning');
+                return;
+            }
+            try {
+                const resp = await fetch(`${getBaseUrl()}/api/files/content?rootPath=${encodeURIComponent(currentWorkspace)}&relativePath=${encodeURIComponent(relativePath)}`);
+                if (!resp.ok) {
+                    const err = await resp.text();
+                    throw new Error(err);
+                }
+                const content = await resp.text();
+
+                if (editor) {
+                    const fileName = relativePath.split(/[/\\]/).pop();
+                    currentLanguage = getLanguageFromFileName(fileName);
+                    currentFile = relativePath;
+                    document.getElementById('tabFileName').textContent = fileName;
+                    document.getElementById('placeholderText').style.display = 'none';
+                    monaco.editor.setModelLanguage(editor.getModel(), currentLanguage);
+                    editor.setValue(content);
+
+                    const saveBtn = document.getElementById('saveBtn');
+                    saveBtn.disabled = true;
+                    saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+                document.querySelectorAll('.file-tree-item').forEach(el => {
+                    el.classList.remove('active');
+                    if (el.getAttribute('title') === relativePath) el.classList.add('active');
+                });
+            } catch (err) {
+                showNotification(`读取失败: ${err.message}`, 'error');
+            }
+        }
+
+        // ========== Save Changes ==========
+        async function saveChanges() {
+            if (!editor || !currentFile || !currentWorkspace) {
+                showNotification('请先打开一个文件！', 'warning');
+                return;
+            }
+
+            const content = editor.getValue();
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner"></span> 保存中...';
+
+            try {
+                const resp = await fetch(`${getBaseUrl()}/api/files/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rootPath: currentWorkspace,
+                        relativePath: currentFile,
+                        content: content
+                    })
+                });
+
+                if (!resp.ok) throw new Error(await resp.text());
+
+                saveBtn.innerHTML = '<span>✅</span> 已保存';
+                setTimeout(() => {
+                    saveBtn.innerHTML = '<span>💾</span> Save Changes';
+                    saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }, 2000);
+                showNotification(`文件已保存: ${currentFile}`, 'success');
+            } catch (err) {
+                saveBtn.innerHTML = '<span>❌</span> 保存失败';
+                setTimeout(() => {
+                    saveBtn.innerHTML = '<span>💾</span> Save Changes';
+                }, 2000);
+                showNotification(`保存失败: ${err.message}`, 'error');
+            }
+        }
+
+        // ========== Helpers ==========
+        function escapeHTML(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        function escapeJS(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+        function getFileIcon(name) {
+            if (name.endsWith('.java')) return '☕';
+            if (name.endsWith('.cbl')) return '📋';
+            if (name.endsWith('.cpy')) return '📄';
+            return '📄';
+        }
+        function getLanguageFromFileName(name) {
+            if (name.endsWith('.java')) return 'java';
+            if (name.endsWith('.cbl') || name.endsWith('.cpy')) return 'cobol';
+            if (name.endsWith('.xml')) return 'xml';
+            if (name.endsWith('.json')) return 'json';
+            if (name.endsWith('.js')) return 'javascript';
+            if (name.endsWith('.py')) return 'python';
+            return 'plaintext';
+        }
+        function updateStatus(status, text) {
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            dot.className = 'status-dot';
+            if (status === 'ready') dot.classList.add('s-ready');
+            else if (status === 'loading') dot.classList.add('s-loading');
+            else if (status === 'error') dot.classList.add('s-error');
+            if (txt) txt.textContent = text;
+        }
+
+        // ========== Apple-style Success Toast ==========
+        function showSuccessToast(message) {
+            const existingToast = document.querySelector('.success-toast');
+            if (existingToast) existingToast.remove();
+
+            const toast = document.createElement('div');
+            toast.className = 'success-toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 2000);
+        }
+
+        // ========== macOS-style Notifications ==========
+        function showNotification(message, type = 'info') {
+            const terminal = document.getElementById('terminalOutput');
+            if (!terminal) return;
+
+            const colors = {
+                error: 'text-red-400',
+                success: 'text-green-400',
+                warning: 'text-yellow-400',
+                info: 'text-blue-400'
+            };
+
+            const icons = {
+                error: '❌',
+                success: '✅',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+
+            const div = document.createElement('div');
+            div.className = `macos-notification ${colors[type]} text-xs my-2 py-2 px-3 rounded-lg bg-black/30 backdrop-blur-sm`;
+            div.innerHTML = `<span class="mr-2">${icons[type]}</span>${escapeHTML(message)}`;
+            terminal.appendChild(div);
+
+            setTimeout(() => {
+                div.classList.remove('macos-notification');
+                div.classList.add('macos-notification', 'fade-out');
+                setTimeout(() => div.remove(), 300);
+            }, 3000);
+        }
+
+        // ========== Terminal ==========
         function clearTerminal() {
-            const output = document.getElementById('terminalOutput');
-            if (output) output.innerHTML = '<code class="text-[#00ff88]"></code>';
+            const out = document.getElementById('terminalOutput');
+            if (out) out.innerHTML = '<span id="terminalCursor" class="cursor-blink"></span>';
+            xmlBuffer = '';
         }
 
         function appendToTerminal(text, isHtml = false) {
-            const output = document.getElementById('terminalOutput');
-            if (!output) return;
-            const code = output.querySelector('code');
-            if (!code) return;
-
-            if (isHtml) {
-                code.insertAdjacentHTML('beforeend', text);
-            } else {
-                const span = document.createElement('span');
-                span.textContent = text;
-                code.appendChild(span);
+            const out = document.getElementById('terminalOutput');
+            if (!out) return;
+            if (isHtml) out.insertAdjacentHTML('beforeend', text);
+            else {
+                const s = document.createElement('span');
+                s.textContent = text;
+                out.appendChild(s);
             }
-            const terminal = document.getElementById('aiTerminal') || output.parentElement;
-            if (terminal) terminal.scrollTop = terminal.scrollHeight;
+            const term = document.getElementById('aiTerminal');
+            if (term) term.scrollTop = term.scrollHeight;
         }
 
-        function clearThinking() {
-            if (thinkingElement) {
-                thinkingElement.remove();
-                thinkingElement = null;
-            }
-        }
+        // ========== Robust XML Parser (V2.1 - Enhanced Buffer) ==========
+        /**
+         * 使用 while 循环和 substring 的轻量级 Parser
+         * 处理大小写混用和嵌套问题，增强缓冲区处理
+         */
+        function parseXMLBlocks(text) {
+            const blocks = [];
+            const lowerText = text.toLowerCase();
+            let searchStart = 0;
 
-        function processStreamLine(line) {
-            line = line.trim();
-            if (!line) return false;
+            while (true) {
+                // 查找 <replace> 标签（大小写不敏感）
+                const openTagIdx = findTagIndex(lowerText, 'replace', searchStart);
+                if (openTagIdx === -1) break;
 
-            if (line.startsWith('data: ')) {
-                const jsonStr = line.substring(6);
-                if (jsonStr === '[DONE]') return false;
-
-                try {
-                    const event = JSON.parse(jsonStr);
-                    if (event.name === 'content' && event.data) {
-                        appendToTerminal(event.data.content);
-                        return true; // 代表收到了有效 Token
-                    } else if (event.name === 'error') {
-                        // 收到后端报错，立刻抛出异常打断外层循环！
-                        throw new Error(event.data);
-                    }
-                } catch (e) {
-                    if (e.message.includes('Ollama 拒绝连接') || e.message.includes('审计异常')) {
-                        throw e; // 将后端精准的报错向上抛给 catch
-                    }
-                    if (jsonStr && jsonStr !== '[DONE]') {
-                        appendToTerminal(jsonStr);
-                        return true;
-                    }
+                // 查找 </replace> 闭合标签
+                const closeTagIdx = findTagIndex(lowerText, '/replace', openTagIdx + 8);
+                if (closeTagIdx === -1) {
+                    // 未找到完整闭合标签，保留缓冲区等待更多数据
+                    break;
                 }
-            } else if (!line.startsWith('event:')) {
-                appendToTerminal(line);
-                return true;
+
+                // 提取块内容（包括标签）
+                const blockStart = findTagStart(text, 'replace', openTagIdx);
+                const blockEnd = findTagEnd(text, closeTagIdx) + 9;
+                const fullBlock = text.substring(blockStart, blockEnd);
+
+                // 解析内部的 <old> 和 <new>
+                const oldContent = extractTagContent(fullBlock, 'old');
+                const newContent = extractTagContent(fullBlock, 'new');
+
+                // Debug: 打印解析结果
+                console.log(`[XML Parser] Block found: oldCode length=${oldContent ? oldContent.length : 0}, newCode length=${newContent ? newContent.length : 0}`);
+
+                if (oldContent && newContent) {
+                    blocks.push({
+                        old: oldContent,
+                        new: newContent,
+                        startIndex: blockStart,
+                        endIndex: blockEnd
+                    });
+                }
+
+                searchStart = blockEnd;
             }
-            return false;
+
+            return blocks;
         }
 
-        async function startAudit() {
-            if (currentMode === 'directory') {
-                return scanDirectory();
+        /**
+         * 查找标签在原始文本中的起始位置（考虑大小写）
+         */
+        function findTagStart(text, tag, lowerIndex) {
+            let j = 0;
+            for (let i = 0; i < text.length && j <= lowerIndex; i++) {
+                if (text[i].toLowerCase() === text[i]) {
+                    if (j === lowerIndex) return i;
+                    j++;
+                }
             }
+            return lowerIndex;
+        }
 
-            const sourceCodeInput = document.getElementById('sourceCode');
-            const sourceCode = sourceCodeInput ? sourceCodeInput.value.trim() : '';
-            if (!sourceCode) {
-                alert('请先在左侧粘贴源代码！');
-                return;
+        /**
+         * 查找标签在规范化文本中的索引
+         */
+        function findTagIndex(lowerText, tag, startFrom) {
+            return lowerText.indexOf('<' + tag + '>', startFrom);
+        }
+
+        /**
+         * 查找闭合标签的结束位置
+         */
+        function findTagEnd(text, lowerIndex) {
+            let angleCount = 0;
+            let j = 0;
+            for (let i = 0; i < text.length; i++) {
+                if (text[i] === '<') angleCount++;
+                else if (text[i] === '>') {
+                    if (angleCount === 1) {
+                        if (j === lowerIndex) return i;
+                    }
+                    angleCount--;
+                    if (angleCount === 0) j++;
+                }
             }
+            return lowerIndex;
+        }
 
-            executeStreamRequest('/api/audit/full-stream', {
-                sourceCode: sourceCode,
-                filePath: 'input-source.java'
+        /**
+         * 从块中提取标签内容（处理嵌套）
+         */
+        function extractTagContent(block, tagName) {
+            const lowerBlock = block.toLowerCase();
+            const openTag = '<' + tagName + '>';
+            const closeTag = '</' + tagName + '>';
+            
+            const openIdx = lowerBlock.indexOf(openTag);
+            if (openIdx === -1) return null;
+            
+            const contentStart = openIdx + openTag.length;
+            
+            let depth = 1;
+            let searchFrom = contentStart;
+            
+            while (depth > 0) {
+                const nextOpen = lowerBlock.indexOf('<' + tagName + '>', searchFrom);
+                const nextClose = lowerBlock.indexOf(closeTag, searchFrom);
+                
+                if (nextClose === -1) return null;
+                
+                if (nextOpen !== -1 && nextOpen < nextClose) {
+                    depth++;
+                    searchFrom = nextOpen + openTag.length;
+                } else {
+                    depth--;
+                    if (depth === 0) {
+                        return block.substring(contentStart, nextClose).trim();
+                    }
+                    searchFrom = nextClose + closeTag.length;
+                }
+            }
+            
+            return null;
+        }
+
+        // ========== Diff Preview Functions (V2.1 - Fixed Layout) ==========
+        function showDiffPreview(originalContent, modifiedContent, fixId) {
+            const diffContainer = document.getElementById('diffContainer');
+            const diffTitle = document.getElementById('diffTitle');
+            const btnAccept = document.getElementById('btnAcceptDiff');
+            
+            // 存储待处理的 diff
+            pendingDiff = { original: originalContent, modified: modifiedContent };
+            pendingFixId = fixId;
+            diffOriginalContent = originalContent;
+            diffModifiedContent = modifiedContent;
+
+            // 设置标题
+            diffTitle.textContent = '代码差异预览';
+
+            // 隐藏普通编辑器，显示 diff 容器
+            document.getElementById('editorContainer').style.opacity = '0.3';
+            diffContainer.style.display = 'block';
+
+            // 初始化或更新 diff editor
+            initDiffEditor(originalContent, modifiedContent);
+
+            // V2.1: 强制 Layout - 确保 Monaco 正确渲染
+            setTimeout(() => {
+                if (diffEditor) {
+                    diffEditor.layout();
+                    console.log('[Diff] Force layout called');
+                }
+            }, 100);
+
+            // 启用按钮
+            btnAccept.disabled = false;
+        }
+
+        function initDiffEditor(originalContent, modifiedContent) {
+            const diffContentEl = document.getElementById('diffEditorContent');
+            
+            // V2.1: 清理旧的 diffEditor 防止内存泄漏
+            disposeDiffEditor();
+
+            // 创建新的 diff editor
+            diffOriginalModel = monaco.editor.createModel(originalContent, currentLanguage);
+            diffModifiedModel = monaco.editor.createModel(modifiedContent, currentLanguage);
+
+            diffEditor = monaco.editor.createDiffEditor(diffContentEl, {
+                theme: 'vs-dark',
+                automaticLayout: true,
+                readOnly: true,
+                renderSideBySide: true,
+                fontSize: 13,
+                fontFamily: "'SF Mono', 'Cascadia Code', Consolas, monospace",
+                scrollBeyondLastLine: false,
+                minimap: { enabled: false },
+                originalEditable: false,
+                diffWordWrap: 'on',
+                renderIndicators: true,
+                renderOverviewRuler: true,
+                enableSplitViewResizing: true
             });
+
+            diffEditor.setModel({
+                original: diffOriginalModel,
+                modified: diffModifiedModel
+            });
+
+            console.log('[Diff] Editor initialized with original:', originalContent.length, 'chars, modified:', modifiedContent.length, 'chars');
         }
 
-        async function scanDirectory() {
-            const dirInput = document.getElementById('directoryPath');
-            const path = dirInput ? dirInput.value.trim() : '';
-            if (!path) {
-                alert('请输入要扫描的绝对目录路径！');
-                return;
+        /**
+         * V2.1: 清理 diffEditor 防止内存泄漏
+         */
+        function disposeDiffEditor() {
+            if (diffEditor) {
+                diffEditor.dispose();
+                diffEditor = null;
             }
-
-            executeStreamRequest('/api/audit/dir-stream', { path: path });
+            if (diffOriginalModel) {
+                diffOriginalModel.dispose();
+                diffOriginalModel = null;
+            }
+            if (diffModifiedModel) {
+                diffModifiedModel.dispose();
+                diffModifiedModel = null;
+            }
         }
 
-        async function executeStreamRequest(endpoint, payload) {
-            if (isStreaming) return;
-            isStreaming = true;
+        async function acceptDiff() {
+            if (!pendingDiff || !editor || !pendingFixId) return;
 
-            const btn = document.getElementById('auditBtn');
-            if (btn) {
-                btn.disabled = true;
-                btn.classList.add('opacity-50');
-            }
+            const btnAccept = document.getElementById('btnAcceptDiff');
+            const btnCancel = document.getElementById('btnCancelDiff');
+            
+            btnAccept.disabled = true;
+            btnAccept.innerHTML = '<span class="spinner"></span> 保存中...';
+            btnCancel.disabled = true;
 
-            clearTerminal();
-            appendToTerminal('⚡ 初始化 Agentic 审计引擎...\n\n');
-            appendToTerminal('📡 正在请求接口: ' + endpoint + '\n');
-            appendToTerminal('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n');
-
-            appendToTerminal('<div id="thinking-anim" class="text-yellow-400 animate-pulse my-2">🧠 AI 正在读取海量代码预热上下文，请耐心等待...</div>', true);
-            thinkingElement = document.getElementById('thinking-anim');
-
+            const modifiedContent = diffModifiedContent;
+            
             try {
-                const response = await fetch(endpoint, {
+                // 1. 更新编辑器内容
+                editor.setValue(modifiedContent);
+
+                // 2. 隐藏 diff 视图
+                hideDiffView();
+
+                // 3. 保存到后端
+                const resp = await fetch(`${getBaseUrl()}/api/files/save`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({
+                        rootPath: currentWorkspace,
+                        relativePath: currentFile,
+                        content: modifiedContent
+                    })
                 });
 
-                if (!response.ok) {
-                    let errorMsg = 'HTTP ' + response.status;
-                    if (response.status === 413) errorMsg += ' (请求体过大)';
-                    if (response.status === 404) errorMsg += ' (接口不存在)';
-                    throw new Error(errorMsg);
+                if (!resp.ok) throw new Error(await resp.text());
+
+                // 4. 更新卡片状态
+                const fixBtn = document.getElementById(`${pendingFixId}-btn`);
+                if (fixBtn) {
+                    fixBtn.innerHTML = '✅ 已接受';
+                    fixBtn.classList.remove('bg-blue-500', 'hover:bg-blue-400');
+                    fixBtn.classList.add('bg-green-600');
+                    fixBtn.disabled = true;
                 }
 
-                const reader = response.body.getReader();
+                // 5. 显示成功动画
+                const editorSection = document.querySelector('section.glass-card');
+                editorSection.classList.add('success-flash');
+                setTimeout(() => editorSection.classList.remove('success-flash'), 600);
+
+                // 6. V2.1: Apple 风格绿色提示框
+                showSuccessToast('✅ 代码已重构');
+
+                showNotification('✅ 代码已接受并保存！', 'success');
+
+            } catch (err) {
+                showNotification(`保存失败: ${err.message}`, 'error');
+                btnAccept.disabled = false;
+                btnAccept.innerHTML = '<span>✔️</span> 接受并覆盖';
+                btnCancel.disabled = false;
+            }
+
+            // 清理状态
+            pendingDiff = null;
+            pendingFixId = null;
+        }
+
+        function cancelDiff() {
+            hideDiffView();
+            disposeDiffEditor();
+            pendingDiff = null;
+            pendingFixId = null;
+            showNotification('已取消预览', 'info');
+        }
+
+        function hideDiffView() {
+            document.getElementById('diffContainer').style.display = 'none';
+            document.getElementById('editorContainer').style.opacity = '1';
+        }
+
+        // ========== XML Parsing & Diff Cards (V2.2 - Ultra Robust) ==========
+        function processStreamLine(text) {
+            // V2.2: 确保 xmlBuffer 持续累加
+            xmlBuffer += text;
+            
+            let result = '';
+            let lastProcessedIndex = 0;
+
+            // Debug: 打印缓冲区状态
+            console.log('[XML Parser] Buffer length:', xmlBuffer.length, 'Input text length:', text.length);
+
+            // V2.2: 首先尝试用健壮的 while 循环 Parser
+            const blocks = parseXMLBlocks(xmlBuffer);
+
+            // V2.2: 如果没有解析到块，尝试备用正则解析
+            if (blocks.length === 0) {
+                const fallbackBlocks = parseXMLBlocksFallback(xmlBuffer);
+                if (fallbackBlocks.length > 0) {
+                    console.log('[XML Parser] Using fallback regex parser, found', fallbackBlocks.length, 'blocks');
+                    blocks.push(...fallbackBlocks);
+                }
+            }
+
+            for (const block of blocks) {
+                // 添加块之前的所有文本（不是 XML 的部分直接显示）
+                if (block.startIndex > lastProcessedIndex) {
+                    const beforeText = xmlBuffer.substring(lastProcessedIndex, block.startIndex);
+                    // V2.2: 直接显示非 XML 的审计文本
+                    if (beforeText.trim()) {
+                        result += `<div class="text-xs text-gray-300 my-2 whitespace-pre-wrap">${escapeHTML(beforeText)}</div>`;
+                    }
+                }
+                lastProcessedIndex = block.endIndex;
+
+                const oldCode = block.old;
+                const newCode = block.new;
+
+                if (oldCode && newCode) {
+                    fixCount++;
+                    const fixId = `fix-${fixCount}`;
+                    // V2.2: 双重转义确保安全
+                    const escapedOld = oldCode.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/`/g, "\\`").replace(/\n/g, '\\n');
+                    const escapedNew = newCode.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/`/g, "\\`").replace(/\n/g, '\\n');
+                    
+                    result += `<div class="diff-card" id="${fixId}">
+                        <div class="diff-header">🔧 代码修复建议 #${fixCount}</div>
+                        <div class="diff-old">${escapeHTML(oldCode)}</div>
+                        <div class="diff-new">${escapeHTML(newCode)}</div>
+                        <div class="diff-footer">
+                            <button id="${fixId}-btn" class="btn-apple" onclick="previewFix('${escapedOld}', '${escapedNew}', '${fixId}')">
+                                ✨ 预览修复
+                            </button>
+                        </div>
+                    </div>`;
+                }
+            }
+
+            // V2.2: 如果没有解析到任何块，说明还在等待更多数据，直接返回空
+            // 但如果 xmlBuffer 太大仍未解析到块，尝试输出部分内容
+            if (blocks.length === 0) {
+                // 检查是否需要强制刷新（缓冲区太大）
+                if (xmlBuffer.length > 50000) {
+                    // 输出非 XML 的部分内容作为调试
+                    result += `<div class="text-xs text-gray-400 my-2">${escapeHTML(xmlBuffer.substring(0, 1000))}...</div>`;
+                    xmlBuffer = xmlBuffer.substring(1000);
+                }
+            } else if (lastProcessedIndex > 0) {
+                xmlBuffer = xmlBuffer.substring(lastProcessedIndex);
+                console.log('[XML Parser] Processed blocks, remaining buffer:', xmlBuffer.length);
+            }
+
+            if (result) {
+                result = makeClickableLinks(result);
+            }
+            return result;
+        }
+
+        /**
+         * V2.2: 备用正则解析器 - 处理各种 XML 格式异常
+         */
+        function parseXMLBlocksFallback(text) {
+            const blocks = [];
+            
+            // V2.2: 多种正则模式匹配 replace 块
+            const patterns = [
+                // 标准格式: <replace> ... </replace>
+                /<replace[^>]*>([\s\S]*?)<\/replace>/gi,
+                // 可能没有闭合的格式
+                /<replace>([\s\S]*?)<\/replace>/gi,
+                // 大小写混用
+                /<[Rr][Ee][Pp][Ll][Aa][Cc][Ee][^>]*>([\s\S]*?)<\/[Rr][Ee][Pp][Ll][Aa][Cc][Ee]>/gi
+            ];
+
+            for (const pattern of patterns) {
+                let match;
+                while ((match = pattern.exec(text)) !== null) {
+                    const fullBlock = match[0];
+                    const blockContent = match[1];
+                    
+                    // 提取 old 和 new 内容
+                    let oldContent = null;
+                    let newContent = null;
+                    
+                    // 尝试多种标签格式
+                    const oldPatterns = [
+                        /<old[^>]*>([\s\S]*?)<\/old>/i,
+                        /<OLD[^>]*>([\s\S]*?)<\/OLD>/i
+                    ];
+                    const newPatterns = [
+                        /<new[^>]*>([\s\S]*?)<\/new>/i,
+                        /<NEW[^>]*>([\s\S]*?)<\/NEW>/i
+                    ];
+                    
+                    for (const p of oldPatterns) {
+                        const m = blockContent.match(p);
+                        if (m) { oldContent = m[1].trim(); break; }
+                    }
+                    for (const p of newPatterns) {
+                        const m = blockContent.match(p);
+                        if (m) { newContent = m[1].trim(); break; }
+                    }
+
+                    if (oldContent && newContent) {
+                        // 检查是否已存在相同块
+                        const exists = blocks.some(b => b.old === oldContent && b.new === newContent);
+                        if (!exists) {
+                            blocks.push({
+                                old: oldContent,
+                                new: newContent,
+                                startIndex: match.index,
+                                endIndex: match.index + fullBlock.length
+                            });
+                            console.log('[XML Parser Fallback] Found block: old=' + oldContent.length + ', new=' + newContent.length);
+                        }
+                    }
+                }
+                // 如果找到块就停止
+                if (blocks.length > 0) break;
+            }
+
+            return blocks;
+        }
+
+        /**
+         * 预览修复 - 显示 Diff 视图 (V2.2)
+         */
+        function previewFix(oldCode, newCode, fixId) {
+            const btn = document.getElementById(`${fixId}-btn`);
+            if (!btn) return;
+
+            // V2.2: 显示 loading 状态
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Preparing Diff...';
+
+            // V2.2: 处理双重转义的代码
+            const rawOldCode = unescapeForDiff(oldCode);
+            const rawNewCode = unescapeForDiff(newCode);
+
+            console.log('[Preview Fix] oldCode:', rawOldCode.length, 'chars, newCode:', rawNewCode.length, 'chars');
+            console.log('[Preview Fix] oldCode preview:', rawOldCode.substring(0, Math.min(100, rawOldCode.length)));
+
+            // 获取当前编辑器内容
+            const currentContent = editor ? editor.getValue() : '';
+
+            // V2.2: 容错检查 - 确认 oldCode 在编辑器内容中
+            if (!currentContent) {
+                alert('⚠️ 无法自动匹配代码切片，请先打开对应文件或重新审计');
+                btn.disabled = false;
+                btn.innerHTML = '✨ 预览修复';
+                return;
+            }
+
+            // 计算应用修复后的完整内容
+            let modifiedContent = currentContent;
+            const normalizedOld = normalize(rawOldCode);
+            const normalizedContent = normalize(currentContent);
+            const idx = normalizedContent.indexOf(normalizedOld);
+
+            if (idx !== -1) {
+                console.log('[Preview Fix] Found match at index:', idx);
+                modifiedContent = applyNormalizedReplace(currentContent, normalizedOld, rawNewCode);
+            } else {
+                console.log('[Preview Fix] No match found, trying exact match');
+                const exactIdx = currentContent.indexOf(rawOldCode);
+                if (exactIdx !== -1) {
+                    modifiedContent = currentContent.substring(0, exactIdx) + 
+                                      rawNewCode + 
+                                      currentContent.substring(exactIdx + rawOldCode.length);
+                } else {
+                    // V2.2: 容错提示
+                    console.error('[Preview Fix] Code slice not found in editor');
+                    alert('⚠️ 无法自动匹配代码切片，请手动核对或重新审计');
+                    btn.disabled = false;
+                    btn.innerHTML = '✨ 预览修复';
+                    return;
+                }
+            }
+
+            // 显示 diff 预览
+            showDiffPreview(currentContent, modifiedContent, fixId);
+
+            // V2.2: 按钮保持 loading 状态直到 diff 显示
+            setTimeout(() => {
+                btn.innerHTML = '🔍 预览中...';
+            }, 100);
+        }
+
+        function unescapeForDiff(str) {
+            // V2.2: 处理双重转义
+            try {
+                return str
+                    .replace(/\\\\n/g, '\n')
+                    .replace(/\\\\'/g, "'")
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\'/g, "'")
+                    .replace(/\\\\/g, '\\');
+            } catch (e) {
+                console.error('Unescape error:', e);
+                return str;
+            }
+        }
+
+        function normalize(str) {
+            if (!str) return '';
+            return str
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/\t/g, '    ')
+                .replace(/\u00A0/g, ' ')
+                .trim();
+        }
+
+        function applyNormalizedReplace(content, oldNormalized, newCode) {
+            const normalizedContent = normalize(content);
+            const idx = normalizedContent.indexOf(oldNormalized);
+            
+            if (idx === -1) return content;
+
+            let contentIdx = 0;
+            let normIdx = 0;
+
+            while (normIdx < idx && contentIdx < content.length) {
+                if (content[contentIdx] === '\r' && content[contentIdx + 1] === '\n') {
+                    contentIdx += 2;
+                } else {
+                    contentIdx++;
+                }
+                normIdx = normalize(content.substring(0, contentIdx)).length;
+            }
+
+            const startIdx = contentIdx;
+
+            while (normIdx < idx + oldNormalized.length && contentIdx < content.length) {
+                contentIdx++;
+                normIdx = normalize(content.substring(0, contentIdx)).length;
+            }
+
+            const endIdx = contentIdx;
+            
+            return content.substring(0, startIdx) + newCode + content.substring(endIdx);
+        }
+
+        function makeClickableLinks(text) {
+            const patterns = [
+                /\[([a-zA-Z0-9_/\\.-]+\.(?:java|cbl|cpy|xml|json|js|ts|html|css|sql|py|properties|yml|yaml))\]/g,
+                /(?<![/\\])\b([a-zA-Z0-9_.-]+\.(?:java|cbl|cpy|xml|json|js|ts|html|css|sql|py|properties|yml|yaml))\b/g
+            ];
+
+            patterns.forEach(pattern => {
+                text = text.replace(pattern, (m, path) => {
+                    return `<span class="clickable-filename" onclick="handleFileClick('${escapeJS(path)}')">[${path}]</span>`;
+                });
+            });
+            return text;
+        }
+
+        // ========== Handle File Click from Stream ==========
+        async function handleFileClick(path) {
+            if (!currentWorkspace) {
+                showNotification('请先加载工作区！', 'warning');
+                return;
+            }
+
+            let targetPath = null;
+            for (const file of loadedFiles) {
+                if (file.endsWith(path) || file.includes(path)) {
+                    targetPath = file;
+                    break;
+                }
+            }
+
+            if (!targetPath) {
+                targetPath = path;
+            }
+
+            showNotification(`正在打开: ${targetPath}`, 'info');
+            await openFile(targetPath);
+        }
+
+        // ========== Legacy Apply Fix (保留兼容) ==========
+        async function applyFixToEditor(oldCode, newCode, fixId) {
+            const btn = document.getElementById(`${fixId}-btn`);
+            if (!btn || !editor) return;
+
+            btn.disabled = true;
+            btn.classList.add('applying');
+            btn.innerHTML = '<span class="spinner"></span> Applying...';
+
+            const rawOldCode = oldCode.replace(/\\n/g, '\n').replace(/\\'/g, "'");
+            const rawNewCode = newCode.replace(/\\n/g, '\n').replace(/\\'/g, "'");
+
+            try {
+                let range = null;
+
+                let matches = editor.getModel().findMatches(rawOldCode, false, false, false, null, true);
+                if (matches && matches.length > 0) {
+                    range = matches[0].range;
+                }
+
+                if (!range) {
+                    const normalizedOld = normalize(rawOldCode);
+                    const editorContent = editor.getValue();
+                    const normalizedContent = normalize(editorContent);
+                    const idx = normalizedContent.indexOf(normalizedOld);
+
+                    if (idx !== -1) {
+                        range = findRangeFromNormalized(editorContent, normalizedContent, idx, normalizedOld.length);
+                    }
+                }
+
+                if (range) {
+                    editor.executeEdits('ai-fix', [{ range: range, text: rawNewCode }]);
+                    editor.revealRangeInCenter(range);
+
+                    currentDecorations = editor.deltaDecorations(currentDecorations, [{
+                        range: range,
+                        options: {
+                            className: 'ai-fix-highlight',
+                            inlineClassName: 'ai-fix-highlight'
+                        }
+                    }]);
+                    setTimeout(() => {
+                        currentDecorations = editor.deltaDecorations(currentDecorations, []);
+                    }, 2000);
+
+                    btn.innerHTML = '✅ 已修复';
+                    btn.classList.remove('bg-blue-500', 'hover:bg-blue-400');
+                    btn.classList.add('bg-green-600');
+                    showNotification('代码已修复并高亮显示！', 'success');
+                } else {
+                    btn.innerHTML = '⚠️ 未找到';
+                    showNotification('未在编辑器中找到匹配的代码（请确保已打开正确文件）', 'warning');
+                }
+            } catch (err) {
+                console.error('Apply fix error:', err);
+                btn.innerHTML = '❌ 失败';
+                showNotification(`应用修复失败: ${err.message}`, 'error');
+            }
+        }
+
+        function findRangeFromNormalized(content, normalizedContent, startNormIdx, length) {
+            let contentIdx = 0;
+            let normIdx = 0;
+
+            while (normIdx < startNormIdx && contentIdx < content.length) {
+                if (content[contentIdx] === '\r' && content[contentIdx + 1] === '\n') {
+                    contentIdx += 2;
+                } else {
+                    contentIdx++;
+                }
+                normIdx = normalize(content.substring(0, contentIdx)).length;
+            }
+
+            const startPos = editor.getModel().getPositionAt(contentIdx);
+            let endIdx = contentIdx;
+
+            while (normIdx < startNormIdx + length && endIdx < content.length) {
+                endIdx++;
+                normIdx = normalize(content.substring(0, endIdx)).length;
+            }
+
+            const endPos = editor.getModel().getPositionAt(endIdx);
+            return {
+                startLineNumber: startPos.lineNumber,
+                startColumn: startPos.column,
+                endLineNumber: endPos.lineNumber,
+                endColumn: endPos.column
+            };
+        }
+
+        // ========== Start Audit (V2.2 - Enhanced Stream Processing) ==========
+        async function startAudit() {
+            if (isStreaming) return;
+            const path = document.getElementById('dirPath').value.trim();
+            if (!path) {
+                showNotification('请先输入并加载代码目录！', 'warning');
+                return;
+            }
+
+            isStreaming = true;
+            const btn = document.getElementById('auditBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 审计中...'; }
+
+            clearTerminal();
+            appendToTerminal('<span class="text-blue-400 text-xs block mb-4">━━━ 启动全量 AI 审计 ━━━</span>\n', true);
+            appendToTerminal(`<span class="text-gray-400 text-xs">📂 ${escapeHTML(path)}</span>\n\n`, true);
+
+            try {
+                const resp = await fetch(`${getBaseUrl()}/api/audit/dir-stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+                const reader = resp.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
-                let firstTokenReceived = false;
+                let lastAppendedContent = ''; // V2.2: 跟踪上次追加的内容
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
-                    buffer = lines.pop();
+                    buffer = lines.pop(); // 保留未完成的行
 
-                    try {
-                        for (const line of lines) {
-                            const hasContent = processStreamLine(line);
-                            if (hasContent && !firstTokenReceived) {
-                                firstTokenReceived = true;
-                                clearThinking();
-                                appendToTerminal('✅ 连接成功！开始输出审计结果...\n\n');
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (!line || line === 'data:') continue;
+                        
+                        if (line.startsWith('data:')) {
+                            const dataStr = line.substring(5).trim();
+                            if (dataStr === '[DONE]') continue;
+                            
+                            try {
+                                const parsed = JSON.parse(dataStr);
+                                if (parsed.isError) {
+                                    throw new Error(parsed.content || '未知错误');
+                                }
+                                if (parsed.content) {
+                                    // V2.2: 确保审计内容被追加到终端
+                                    const processed = processStreamLine(parsed.content);
+                                    if (processed) {
+                                        appendToTerminal(processed, true);
+                                        lastAppendedContent = processed;
+                                    }
+                                    // V2.2: 如果没有处理内容但有原始文本，直接显示
+                                    else if (parsed.content.trim()) {
+                                        const escaped = escapeHTML(parsed.content);
+                                        appendToTerminal(`<div class="text-xs text-gray-300 my-1">${escaped}</div>`, true);
+                                    }
+                                }
+                                // V2.2: 处理批量状态事件
+                                if (parsed.isBatchStart) {
+                                    appendToTerminal(`<div class="text-yellow-400 text-xs my-2">━━ 第 ${parsed.batchNumber}/${parsed.totalBatches} 批次 ━━━</div>`, true);
+                                }
+                                if (parsed.isWarning) {
+                                    appendToTerminal(`<div class="text-yellow-400 text-xs my-2">${escapeHTML(parsed.content)}</div>`, true);
+                                }
+                            } catch (e) {
+                                // JSON 解析失败，可能是纯文本
+                                if (!dataStr.startsWith('{') && dataStr.trim()) {
+                                    const processed = processStreamLine(dataStr);
+                                    if (processed) {
+                                        appendToTerminal(processed, true);
+                                    } else {
+                                        // V2.2: 直接显示无法解析的文本
+                                        appendToTerminal(`<div class="text-xs text-gray-300 my-1">${escapeHTML(dataStr)}</div>`, true);
+                                    }
+                                }
+                            }
+                        } else if (line.trim()) {
+                            // V2.2: 非 SSE 格式的纯文本直接显示
+                            const processed = processStreamLine(line);
+                            if (processed) {
+                                appendToTerminal(processed, true);
                             }
                         }
-                    } catch (streamError) {
-                        clearThinking();
-                        appendToTerminal('\n❌ ' + streamError.message + '\n', true);
-                        break;
+                    }
+                    
+                    // V2.2: 刷新终端滚动
+                    const term = document.getElementById('aiTerminal');
+                    if (term) term.scrollTop = term.scrollHeight;
+                }
+                
+                // V2.2: 最终刷新缓冲区
+                if (xmlBuffer) {
+                    const processed = processStreamLine('');
+                    if (processed) appendToTerminal(processed, true);
+                    // V2.2: 如果缓冲区有剩余内容但没被处理，显示警告
+                    if (xmlBuffer.trim()) {
+                        console.warn('[Audit] Unprocessed buffer:', xmlBuffer);
+                        appendToTerminal(`<div class="text-yellow-400 text-xs my-2">⚠️ 部分内容未能解析为代码修复块</div>`, true);
                     }
                 }
 
-                if (buffer && firstTokenReceived) {
-                    processStreamLine(buffer);
-                }
-
-                if (!firstTokenReceived) {
-                    appendToTerminal('\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-                    appendToTerminal('✨ 审计流传输完毕。\n');
-                }
-
-            } catch (error) {
-                console.error('Fetch error:', error);
-                clearThinking();
-                appendToTerminal('\n❌ 请求失败: ' + error.message + '\n', true);
+                appendToTerminal('\n<span class="text-blue-400 text-xs block mt-4">━━━ 审计完成 ━━━</span>\n', true);
+                updateStatus('ready', '审计完成');
+                showNotification('✅ 审计完成！请查看右侧结果', 'success');
+            } catch (err) {
+                console.error('Audit error:', err);
+                appendToTerminal(`\n<div class="text-red-400 text-xs font-bold my-2">❌ 审计失败: ${escapeHTML(err.message)}</div>\n`, true);
+                updateStatus('error', '审计失败');
+                showNotification(`审计失败: ${err.message}`, 'error');
             } finally {
                 isStreaming = false;
-                if (btn) {
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-50');
-                }
+                if (btn) { btn.disabled = false; btn.innerHTML = '<span>▶</span> 启动审计'; }
             }
         }
-
-        function updateCodeInfo() {
-            const code = document.getElementById('sourceCode').value;
-            document.getElementById('codeInfo').textContent = code.length + ' 字符';
-        }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                clearTerminal();
-                appendToTerminal('欢迎使用 AgenticSAST Pure Agentic 平台\n');
-                appendToTerminal('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-                appendToTerminal('请在左侧粘贴源代码，然后点击下方按钮启动流式审计\n\n');
-            }
-        });
     </script>
 </body>
 </html>

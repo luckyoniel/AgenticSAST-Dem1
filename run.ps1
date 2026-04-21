@@ -43,7 +43,4 @@ $env:Path = "$($MAVEN_HOME)\bin;" + $env:Path
 
 # 执行 spring-boot:run
 & $MAVEN_CMD clean spring-boot:run
-# 保持窗口打开（如果直接双击运行的话）
-Write-Host "服务已退出。按任意键关闭..." -ForegroundColor Yellow
-$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
 
